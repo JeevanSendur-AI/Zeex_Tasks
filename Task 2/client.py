@@ -18,8 +18,8 @@ if device == "cuda":
     torch.cuda.set_per_process_memory_fraction(0.9, device=0)
 
 # Load models
-model1 = YOLO("Task 1\yolov8x_atm.pt")  # custom yolov8 detector
-model2 = YOLO("Task 1\yolov8x_atm.pt")  # roboflow object detector
+model1 = YOLO(r"Task 2\anomaly_classifier.pt")  # yolo11 classifier(normal, anomlous)
+model2 = YOLO(r"Task 1\yolov8x_atm.pt")  # custom yolov8 object detector
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -81,15 +81,17 @@ for chunk in cap.iter_content(chunk_size=1024):
 
         # Perform inference on both models
         results1 = model1(image)
-        detected_objects1 = [model1.names[int(box.cls)] for box in results1[0].boxes if box.conf > 0.8]
-        model1_frame = results1[0].plot()
-        results2 = model2(model1_frame)
-        detected_objects2 = [model2.names[int(box.cls)] for box in results2[0].boxes if box.conf > 0.8]
+        detected_objects1 = results1[0].probs.data[1].item()
+        if detected_objects1 < 0.8:
+            detected_objects1 = None
+        image = results1[0].plot()
+        results2 = model2(image)
+        detected_objects2 = [model2.names[int(box.cls)] for box in results2[0].boxes if box.conf > 0.4]
         model2_frame = results2[0].plot()
 
         # If both models detect objects with confidence > 0.8, log incident
         if detected_objects1 and detected_objects2:
-            log_to_firebase(list(set(detected_objects1 + detected_objects2)))
+            log_to_firebase(list(set(detected_objects2)))
 
         # Display the annotated frame
         cv2.imshow("Live Video Stream", model2_frame)
