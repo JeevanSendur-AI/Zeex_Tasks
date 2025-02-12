@@ -2,25 +2,42 @@ import cv2
 import os
 import torch
 import tkinter as tk
+import shutil
 from tkinter import filedialog, messagebox, simpledialog
 from PIL import Image, ImageTk
 from ultralytics import YOLO
+# ---------------------------- Reinforcement Learning Strategy ---------------------------- #
+# This implementation integrates a **RLHF (Reinforcement Learning with Human Feedback)**
+# approach to fine-tune the YOLOv11 model based on user corrections. 
+
+# **Key RL Strategy:**
+# - **Human Feedback Collection:** Users provide corrections via radio buttons for each bounding box, 
+#   indicating whether the prediction was correct, a misclassification, or a background object.
+# - **Updating Dataset:** Feedback is converted into YOLO format labels and saved in `dataset/labels/`.
+# - **Confidence Adjustment:** If multiple errors are reported, confidence threshold increases (+0.05) to encourage 
+#   higher certainty before detection.
+# - **Fine-tuning via YOLO Training:** The updated dataset is used to retrain the model with:
+#   - `freeze=3`: Freezes first 3 layers to retain base feature extraction while adapting higher layers.
+#   - `optimizer='AdamW'`: Uses AdamW optimizer for better generalization.
+#   - `lr0=0.000001`: A very low learning rate prevents catastrophic forgetting while slowly adapting.
+#      Model may not fine-tune properly, change dataset path in data.yaml, depending on OS used
+
+# This iterative process ensures the model learns from user corrections, improving real-time detection accuracy.
+
 
 # ---------------------------- Configuration ---------------------------- #
-MODEL_PATH = "Task 3\knife,pistol,rifle.pt"  # Path to your YOLO model
-DATASET_PATH = "dataset/"  # Folder to store images and labels
-CONFIDENCE_THRESHOLD = 0.2  # Initial confidence threshold
+MODEL_PATH = r"Task 3\knife,pistol,rifle.pt"  # Path to your YOLO model
+DATASET_PATH = r"Task 3\weapan-detection-1\train"  # Folder to store images and labels
+CONFIDENCE_THRESHOLD = 0.5 # Initial confidence threshold
 
 # Ensure dataset directories exist
-os.makedirs(f"{DATASET_PATH}/images", exist_ok=True)
-os.makedirs(f"{DATASET_PATH}/labels", exist_ok=True)
+# os.makedirs(f"{DATASET_PATH}/images", exist_ok=True)
+# os.makedirs(f"{DATASET_PATH}/labels", exist_ok=True) already there, not needed
 
 # Load YOLOv11 model
 model = YOLO(MODEL_PATH)
 
 CLASS_NAMES = {0: "Knife", 1: "Pistol", 2: "Rifle"}  
-
-
 
 # ---------------------------- Video Frame Extraction ---------------------------- #
 def extract_frames(video_path, fps=2):
@@ -35,21 +52,24 @@ def extract_frames(video_path, fps=2):
         if not ret:
             break
         if frame_id % interval == 0:
-            frames.append(frame)
+            frame_filename = f"{DATASET_PATH}/images/frame_{frame_id}.jpg"
+            cv2.imwrite(frame_filename, frame)
+            frames.append(frame_filename)
         frame_id += 1
 
     cap.release()
     return frames
 
 # ---------------------------- Image Processing ---------------------------- #
-def run_inference(image):
-    results = model(image)  
+def run_inference(image_path):
+    image = cv2.imread(image_path)
+    results = model(image)
     parsed_results = []
 
     for r in results:
-        boxes = r.boxes.xyxy.cpu().numpy()  
-        confs = r.boxes.conf.cpu().numpy()  
-        classes = r.boxes.cls.cpu().numpy()  
+        boxes = r.boxes.xyxy.cpu().numpy()
+        confs = r.boxes.conf.cpu().numpy()
+        classes = r.boxes.cls.cpu().numpy()
 
         for i in range(len(boxes)):
             if confs[i] >= CONFIDENCE_THRESHOLD:
@@ -64,7 +84,7 @@ def run_inference(image):
                     "confidence": float(confs[i])
                 })
 
-    return parsed_results  
+    return parsed_results
 
 # ---------------------------- GUI Class ---------------------------- #
 class BoundingBoxReviewer:
@@ -94,6 +114,13 @@ class BoundingBoxReviewer:
     def load_image(self):
         self.canvas.delete("all")
         image_path = self.images[self.current_idx]
+
+        # Copy image to dataset/images folder
+        image_name = os.path.basename(image_path)
+        dest_path = os.path.join(DATASET_PATH, "images", image_name)
+        if not os.path.exists(dest_path):
+            shutil.copy(image_path, dest_path)
+
         self.image = cv2.imread(image_path)
         self.image = cv2.cvtColor(self.image, cv2.COLOR_BGR2RGB)
         self.pil_image = Image.fromarray(self.image)
@@ -117,8 +144,7 @@ class BoundingBoxReviewer:
                 (f"Correct ({class_name})", 1),
                 (f"Should be {CLASS_NAMES[(predicted_class + 1) % 3]}", 2),
                 (f"Should be {CLASS_NAMES[(predicted_class + 2) % 3]}", 3),
-                ("Wrong (Background)", 4),
-                ("Incorrect BBox", 5)
+                ("Wrong (Background)", 4)
             ]
 
             frame = tk.Frame(self.root)
@@ -155,7 +181,8 @@ class BoundingBoxReviewer:
 
     def save_annotations(self):
         image_name = os.path.basename(self.images[self.current_idx])
-        label_path = f"{DATASET_PATH}/labels/{image_name.replace('.jpg', '.txt')}"
+        label_name = os.path.splitext(image_name)[0] + ".txt"  # Fix label file naming
+        label_path = f"{DATASET_PATH}/labels/{label_name}"
 
         with open(label_path, "w") as label_file:
             for result in self.results:
@@ -177,7 +204,7 @@ class BoundingBoxReviewer:
                 label_file.write(f"{annotation['correct_class']} {x_center} {y_center} {width} {height}\n")
 
         global CONFIDENCE_THRESHOLD
-        CONFIDENCE_THRESHOLD += 0.05  
+        CONFIDENCE_THRESHOLD += 0.05
 
         messagebox.showinfo("Saved", "Feedback saved successfully!")
 
@@ -186,3 +213,4 @@ if __name__ == "__main__":
     file_path = filedialog.askopenfilename(title="Select Image or Video")
     images = [file_path] if file_path.endswith((".jpg", ".png")) else extract_frames(file_path)
     BoundingBoxReviewer(images)
+    # results = model.train(data="Task 3\weapan-detection-1\data.yaml", epochs=1, imgsz=640, pretrained='True',freeze=3, optimizer='AdamW', lr0=0.000001)

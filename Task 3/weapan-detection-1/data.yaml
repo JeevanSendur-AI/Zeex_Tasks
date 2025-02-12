@@ -1,0 +1,13 @@
+train: Task 3\weapan-detection-1\train\images
+val: Task 3\weapan-detection-1\valid\images
+test: Task 3\weapan-detection-1\test\images
+
+nc: 3
+names: ['Knife', 'pistol', 'rifle']
+
+roboflow:
+  workspace: jeevan-sendur-g-workspace
+  project: weapan-detection-nryfe
+  version: 1
+  license: CC BY 4.0
+  url: https://universe.roboflow.com/jeevan-sendur-g-workspace/weapan-detection-nryfe/dataset/1

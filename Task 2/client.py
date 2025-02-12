@@ -19,7 +19,8 @@ if device == "cuda":
 
 # Load models
 model1 = YOLO(r"Task 2\anomaly_classifier.pt")  # yolo11 classifier(normal, anomlous)
-model2 = YOLO(r"Task 1\yolov8x_atm.pt")  # custom yolov8 object detector
+# model2 = YOLO(r"Task 1\yolov8x_atm.pt")  # custom yolov8 object detector
+model2 = YOLO(r'Task 3\knife,pistol,rifle.pt') #smaller model(yolo11n) for faster inference
 
 import firebase_admin
 from firebase_admin import credentials, firestore
@@ -86,7 +87,7 @@ for chunk in cap.iter_content(chunk_size=1024):
             detected_objects1 = None
         image = results1[0].plot()
         results2 = model2(image)
-        detected_objects2 = [model2.names[int(box.cls)] for box in results2[0].boxes if box.conf > 0.4]
+        detected_objects2 = [model2.names[int(box.cls)] for box in results2[0].boxes if box.conf > 0.8]
         model2_frame = results2[0].plot()
 
         # If both models detect objects with confidence > 0.8, log incident
