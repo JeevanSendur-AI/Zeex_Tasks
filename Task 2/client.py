@@ -7,6 +7,10 @@ from ultralytics import YOLO
 from datetime import datetime
 from PIL import Image
 import torch
+import logging
+
+logging.getLogger("ultralytics").setLevel(logging.ERROR)
+
 
 # Check if GPU is available
 device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -20,19 +24,18 @@ if device == "cuda":
 # Load models
 model1 = YOLO(r"Task 2\anomaly_classifier.pt")  # yolo11 classifier(normal, anomlous)
 # model2 = YOLO(r"Task 1\yolov8x_atm.pt")  # custom yolov8 object detector
-model2 = YOLO(r'Task 3\knife,pistol,rifle.pt') #smaller model(yolo11n) for faster inference
+model2 = YOLO(r'Task 3\knife,pistol,rifle.pt') #smaller model(yolo11n) for faster inference,but different classes
 
 import firebase_admin
 from firebase_admin import credentials, firestore
 
-# Path to your Firebase credentials JSON file
 firebase_json = r"Task 2\task2-7eeef-firebase-adminsdk-fbsvc-eec570cf25.json"
 
 try:
     cred = credentials.Certificate(firebase_json)
     firebase_admin.initialize_app(cred, {
-        'projectId': 'task2-7eeef',  # Ensure this matches your Firebase project
-        'databaseURL': 'https://task2-7eeef-default-rtdb.asia-southeast1.firebasedatabase.app'  # Replace with your Firestore URL
+        'projectId': 'task2-7eeef',  
+        # 'databaseURL': 'https://task2-7eeef.firebaseio.com' 
     })
     db = firestore.client()
     print("[INFO] Firebase Initialized Successfully")
@@ -60,8 +63,8 @@ def log_to_firebase(detected_objects):
 
 for chunk in cap.iter_content(chunk_size=1024):
     byte_stream += chunk
-    a = byte_stream.find(b'\xff\xd8')  # Start of JPEG frame
-    b = byte_stream.find(b'\xff\xd9')  # End of JPEG frame
+    a = byte_stream.find(b'\xff\xd8')  
+    b = byte_stream.find(b'\xff\xd9')  
     
     if a != -1 and b != -1:
         jpg = byte_stream[a:b+2]  # Extract the JPEG frame
@@ -85,13 +88,14 @@ for chunk in cap.iter_content(chunk_size=1024):
         detected_objects1 = results1[0].probs.data[1].item()
         if detected_objects1 < 0.8:
             detected_objects1 = None
+        else:
+            detected_objects1 = 1
         image = results1[0].plot()
         results2 = model2(image)
-        detected_objects2 = [model2.names[int(box.cls)] for box in results2[0].boxes if box.conf > 0.8]
+        detected_objects2 = [model2.names[int(box.cls)] for box in results2[0].boxes if box.conf > 0.2]
         model2_frame = results2[0].plot()
 
-        # If both models detect objects with confidence > 0.8, log incident
-        if detected_objects1 and detected_objects2:
+        if detected_objects1 == 1 and detected_objects2 != None:
             log_to_firebase(list(set(detected_objects2)))
 
         # Display the annotated frame
